@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Numberle — 5‑Digit Wordle with Target Sum</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <meta name="description" content="Guess the 5‑digit secret number in 6 tries. Each guess must match the target digit sum." />
+  </head>
+  <body class="min-h-screen w-full bg-gradient-to-br from-pink-100 via-purple-100 to-blue-100 text-gray-900">
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useEffect, useState } = React;
+
+      const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+      const toDigits = (s) => String(s).split("").map(Number);
+      const sumDigits = (s) => String(s).split("").reduce((a, c) => a + Number(c), 0);
+
+      function randomAnswerForSum(targetSum) {
+        const MAX_TRIES = 20000;
+        for (let i = 0; i < MAX_TRIES; i++) {
+          const n = Math.floor(Math.random() * 90000) + 10000;
+          if (sumDigits(n) === targetSum) return String(n);
+        }
+        const res = [];
+        const dfs = (pos, remaining) => {
+          if (pos === 5) return remaining === 0;
+          const start = pos === 0 ? 1 : 0;
+          for (let d = start; d <= 9; d++) {
+            if (remaining - d < 0) break;
+            res[pos] = d;
+            if (dfs(pos + 1, remaining - d)) return true;
+          }
+          return false;
+        };
+        const ok = dfs(0, targetSum);
+        return ok ? res.join("") : "12345";
+      }
+
+      function scoreGuess(answer, guess) {
+        const A = toDigits(answer);
+        const G = toDigits(guess);
+        const res = new Array(5).fill("gray");
+        const remaining = {0:0,1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:0};
+
+        for (let i = 0; i < 5; i++) {
+          if (G[i] === A[i]) {
+            res[i] = "green";
+          } else {
+            remaining[A[i]] = (remaining[A[i]] || 0) + 1;
+          }
+        }
+        for (let i = 0; i < 5; i++) {
+          if (res[i] !== "green") {
+            const d = G[i];
+            if ((remaining[d] || 0) > 0) {
+              res[i] = "yellow";
+              remaining[d]--;
+            } else {
+              res[i] = "gray";
+            }
+          }
+        }
+        return res;
+      }
+
+      const Cell = ({ value = "", state = "pending" }) => {
+        const bg = state === "green" ? "bg-green-300 text-green-900"
+          : state === "yellow" ? "bg-yellow-200 text-yellow-900"
+          : state === "gray" ? "bg-gray-300 text-gray-700"
+          : "bg-white text-gray-900";
+        const ring = state === "pending" ? "ring-1 ring-gray-300" : "";
+        return (
+          <div className={\`h-14 w-14 rounded-xl flex items-center justify-center text-2xl font-bold \${bg} \${ring}\`}>
+            {value}
+          </div>
+        );
+      };
+
+      const KeyButton = ({ label, onClick, wide }) => (
+        <button
+          className={\`px-3 py-3 rounded-xl shadow text-sm font-semibold bg-pink-100 hover:bg-pink-200 active:scale-95 transition \${wide ? "col-span-2" : ""}\`}
+          onClick={onClick}
+          aria-label={label}
+        >
+          {label}
+        </button>
+      );
+
+      function Numberle() {
+        const [targetSum, setTargetSum] = useState(23);
+        const [answer, setAnswer] = useState("");
+        const [status, setStatus] = useState("pre"); // pre | playing | won | lost
+        const [guesses, setGuesses] = useState([]);
+        const [current, setCurrent] = useState("");
+        const [toast, setToast] = useState("");
+        const [helpOpen, setHelpOpen] = useState(false);
+
+        const attemptsLeft = 6 - guesses.length;
+
+        const startGame = () => {
+          const ts = clamp(Math.floor(targetSum), 1, 45);
+          const ans = randomAnswerForSum(ts);
+          setTargetSum(ts);
+          setAnswer(ans);
+          setGuesses([]);
+          setCurrent("");
+          setStatus("playing");
+          setToast("");
+        };
+
+        const resetToLobby = () => {
+          setStatus("pre");
+          setGuesses([]);
+          setCurrent("");
+          setAnswer("");
+          setToast("");
+        };
+
+        useEffect(() => {
+          const onKey = (e) => {
+            if (e.key === "?" || e.key.toLowerCase() === "h") {
+              setHelpOpen(v => !v); return;
+            }
+            if (status !== "playing") return;
+            if (e.key === "Enter") return submitGuess();
+            if (e.key === "Backspace") return setCurrent(s => s.slice(0, -1));
+            if (/^[0-9]$/.test(e.key)) {
+              setCurrent(s => (s.length < 5 ? s + e.key : s));
+            }
+          };
+          const onEsc = (e) => { if (e.key === "Escape") setHelpOpen(false); };
+          window.addEventListener("keydown", onKey);
+          window.addEventListener("keydown", onEsc);
+          return () => {
+            window.removeEventListener("keydown", onKey);
+            window.removeEventListener("keydown", onEsc);
+          };
+        }, [status, current, guesses]);
+
+        const invalidate = (msg) => {
+          setToast(msg);
+          setTimeout(() => setToast(""), 1500);
+        };
+
+        const submitGuess = () => {
+          if (status !== "playing") return;
+          if (current.length !== 5) return invalidate("Enter a 5-digit number.");
+          if (sumDigits(current) !== targetSum) return invalidate(\`Sum must be \${targetSum}.\`);
+
+          const feedback = scoreGuess(answer, current);
+          const newGuesses = [...guesses, { guess: current, feedback }];
+          setGuesses(newGuesses);
+          setCurrent("");
+
+          const isWin = feedback.every(c => c === "green");
+          if (isWin) { setStatus("won"); setToast("You cracked it! ✅"); return; }
+          if (newGuesses.length >= 6) { setStatus("lost"); setToast("Out of tries."); return; }
+        };
+
+        const keyboardDigits = ["1","2","3","4","5","6","7","8","9","0"];
+
+        return (
+          <div className="min-h-screen w-full">
+            <div className="max-w-3xl mx-auto px-4 py-6">
+              <header className="flex items-center justify-between mb-4">
+                <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">Numberle</h1>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="px-3 py-2 rounded-xl bg-white/70 hover:bg-white text-sm font-semibold shadow"
+                    onClick={() => setHelpOpen(true)}
+                    aria-haspopup="dialog"
+                    aria-expanded={helpOpen}
+                    aria-controls="help-modal"
+                  >Help</button>
+                  <div className="text-sm text-gray-600 hidden sm:block">5 digits • target sum constraint</div>
+                </div>
+              </header>
+
+              {status === "pre" && (
+                <div className="bg-white rounded-2xl shadow p-5 space-y-4">
+                  <div className="text-sm text-gray-700">
+                    Guess the <b>5-digit</b> secret in <b>6 tries</b>. Every guess must sum to the target.
+                  </div>
+                  <div className="flex items-end gap-3 flex-wrap">
+                    <label className="flex items-center gap-2">
+                      <span className="text-sm font-semibold">Target sum</span>
+                      <input type="number" className="px-3 py-2 rounded-xl border border-gray-300 w-28"
+                        min={1} max={45} value={targetSum}
+                        onChange={(e) => setTargetSum(clamp(Number(e.target.value || 0), 1, 45))} />
+                    </label>
+                    <button className="px-4 py-2 rounded-xl bg-purple-400 text-white font-semibold shadow hover:opacity-90"
+                      onClick={startGame}>Start Game</button>
+                  </div>
+                </div>
+              )}
+
+              {status !== "pre" && (
+                <div className="space-y-4">
+                  <div className="bg-white rounded-2xl shadow p-4 flex items-center justify-between">
+                    <div className="text-sm">Target sum: <b>{targetSum}</b></div>
+                    <div className="text-sm">Attempts left: <b>{attemptsLeft}</b></div>
+                    <div className="text-sm">Constraint: guesses must sum to <b>{targetSum}</b></div>
+                  </div>
+
+                  <div className="grid grid-rows-6 gap-2 justify-center">
+                    {guesses.map((g, rowIdx) => (
+                      <div key={\`row-\${rowIdx}\`} className="grid grid-cols-5 gap-2 place-items-center">
+                        {g.guess.split("").map((ch, i) => (
+                          <Cell key={i} value={ch} state={g.feedback[i]} />
+                        ))}
+                      </div>
+                    ))}
+
+                    {guesses.length < 6 && status === "playing" && (
+                      <div className="grid grid-cols-5 gap-2 place-items-center">
+                        {[0,1,2,3,4].map((i) => (<Cell key={i} value={current[i] || ""} state="pending" />))}
+                      </div>
+                    )}
+
+                    {[...Array(Math.max(0, 6 - guesses.length - (status === "playing" ? 1 : 0))).keys()].map((k) => (
+                      <div key={\`empty-\${k}\`} className="grid grid-cols-5 gap-2 place-items-center">
+                        {[0,1,2,3,4].map((i) => (<Cell key={i} value="" state="pending" />))}
+                      </div>
+                    ))}
+                  </div>
+
+                  {status === "playing" && (
+                    <div className="bg-white rounded-2xl shadow p-4 space-y-3">
+                      <div className="flex gap-2 items-center">
+                        <input inputMode="numeric" pattern="[0-9]*" maxLength={5}
+                          className="flex-1 px-4 py-3 rounded-xl border border-gray-300 text-lg tracking-widest"
+                          placeholder={\`Enter 5 digits (sum = \${targetSum})\`}
+                          value={current}
+                          onChange={(e) => {
+                            const next = e.target.value.replace(/\D/g, "").slice(0, 5);
+                            setCurrent(next);
+                          }} />
+                        <button className="px-4 py-3 rounded-xl bg-purple-400 text-white font-semibold shadow hover:opacity-90"
+                          onClick={() => submitGuess()} disabled={current.length !== 5}>Enter</button>
+                        <button className="px-4 py-3 rounded-xl bg-gray-200 text-gray-900 font-semibold shadow hover:bg-gray-300"
+                          onClick={() => setCurrent(s => s.slice(0, -1))}>←</button>
+                      </div>
+                      <div className="grid grid-cols-10 gap-2">
+                        {["1","2","3","4","5","6","7","8","9","0"].map((d) => (
+                          <KeyButton key={d} label={d} onClick={() => setCurrent(s => (s.length < 5 ? s + d : s))} />
+                        ))}
+                        <KeyButton label="Back" onClick={() => setCurrent(s => s.slice(0, -1))} />
+                        <KeyButton label="Enter" onClick={() => submitGuess()} />
+                      </div>
+                    </div>
+                  )}
+
+                  {status !== "playing" && status !== "pre" && (
+                    <div className="bg-white rounded-2xl shadow p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div className="text-lg font-semibold">
+                        {status === "won" ? (<span>🎉 You win!</span>) : (<span>😅 Better luck next time.</span>)}
+                        <span className="ml-2 text-gray-700">Answer: <b>{answer}</b></span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button className="px-4 py-2 rounded-2xl bg-purple-400 text-white font-semibold shadow hover:opacity-90"
+                          onClick={() => startGame()}>New Game (same target)</button>
+                        <button className="px-4 py-2 rounded-2xl bg-pink-200 text-gray-900 font-semibold shadow hover:bg-pink-300"
+                          onClick={() => resetToLobby()}>Change Target</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {toast && (<div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-xl shadow">{toast}</div>)}
+
+                  <footer className="text-xs text-gray-500 text-center pt-4 pb-8">
+                    Inspired by Wordle mechanics. Educational clone for numbers with a digit-sum constraint.
+                  </footer>
+                </div>
+              )}
+            </div>
+
+            {helpOpen && (
+              <div id="help-modal" role="dialog" aria-modal="true"
+                className="fixed inset-0 z-50 flex items-center justify-center">
+                <div className="absolute inset-0 bg-black/30" onClick={() => setHelpOpen(false)} aria-hidden="true" />
+                <div className="relative z-10 w-[92vw] max-w-xl bg-white rounded-2xl shadow-xl p-6">
+                  <div className="flex items-start justify-between mb-3">
+                    <h2 className="text-xl font-bold">How to Play</h2>
+                    <button className="px-3 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm"
+                      onClick={() => setHelpOpen(false)} aria-label="Close help">✕</button>
+                  </div>
+                  <div className="space-y-3 text-sm text-gray-700">
+                    <p>Your mission: guess the hidden <b>5-digit number</b> in <b>6 tries</b>. Set a <b>Target Sum</b> before starting. Every guess must add up to that target.</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li><b>Enter</b> a 5-digit number that satisfies the target sum.</li>
+                      <li>After each guess, tiles change color to show feedback:</li>
+                    </ul>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="flex items-center gap-2"><span className="inline-block h-6 w-6 rounded bg-green-300"></span><span><b>Green</b>: right digit, right spot</span></div>
+                      <div className="flex items-center gap-2"><span className="inline-block h-6 w-6 rounded bg-yellow-200"></span><span><b>Yellow</b>: digit exists, wrong spot</span></div>
+                      <div className="flex items-center gap-2"><span className="inline-block h-6 w-6 rounded bg-gray-300"></span><span><b>Gray</b>: digit not in secret</span></div>
+                    </div>
+                    <div>
+                      <p className="font-semibold mt-2">Examples</p>
+                      <ul className="list-disc pl-5 space-y-1">
+                        <li><b>Target Sum = 23</b>. Valid guess: <code>68315</code> (6+8+3+1+5 = 23). Invalid: <code>56743</code> (sum 25) → rejected.</li>
+                        <li>Duplicates are allowed. Feedback follows standard Wordle rules for duplicates.</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="font-semibold mt-2">Controls</p>
+                      <ul className="list-disc pl-5 space-y-1">
+                        <li>Use number keys or on-screen keypad. <b>Enter</b> to submit, <b>Backspace</b> to delete.</li>
+                        <li><b>H</b> or <b>?</b> opens/closes Help, <b>Esc</b> closes.</li>
+                      </ul>
+                    </div>
+                    <p className="text-xs text-gray-500">Inspired by Wordle (NYT). Numeric variant for education and fun.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<Numberle />);
+    </script>
+  </body>
+</html>
