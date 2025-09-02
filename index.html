@@ -75,7 +75,7 @@
           : "bg-white text-gray-900";
         const ring = state === "pending" ? "ring-1 ring-gray-300" : "";
         return (
-          <div className={\`h-14 w-14 rounded-xl flex items-center justify-center text-2xl font-bold \${bg} \${ring}\`}>
+          <div className={`h-14 w-14 rounded-xl flex items-center justify-center text-2xl font-bold ${bg} ${ring}`}>
             {value}
           </div>
         );
@@ -83,7 +83,7 @@
 
       const KeyButton = ({ label, onClick, wide }) => (
         <button
-          className={\`px-3 py-3 rounded-xl shadow text-sm font-semibold bg-pink-100 hover:bg-pink-200 active:scale-95 transition \${wide ? "col-span-2" : ""}\`}
+          className={`px-3 py-3 rounded-xl shadow text-sm font-semibold bg-pink-100 hover:bg-pink-200 active:scale-95 transition ${wide ? "col-span-2" : ""}`}
           onClick={onClick}
           aria-label={label}
         >
@@ -150,7 +150,7 @@
         const submitGuess = () => {
           if (status !== "playing") return;
           if (current.length !== 5) return invalidate("Enter a 5-digit number.");
-          if (sumDigits(current) !== targetSum) return invalidate(\`Sum must be \${targetSum}.\`);
+          if (sumDigits(current) !== targetSum) return invalidate(`Sum must be ${targetSum}.`);
 
           const feedback = scoreGuess(answer, current);
           const newGuesses = [...guesses, { guess: current, feedback }];
@@ -209,7 +209,7 @@
 
                   <div className="grid grid-rows-6 gap-2 justify-center">
                     {guesses.map((g, rowIdx) => (
-                      <div key={\`row-\${rowIdx}\`} className="grid grid-cols-5 gap-2 place-items-center">
+                      <div key={`row-${rowIdx}`} className="grid grid-cols-5 gap-2 place-items-center">
                         {g.guess.split("").map((ch, i) => (
                           <Cell key={i} value={ch} state={g.feedback[i]} />
                         ))}
@@ -223,7 +223,7 @@
                     )}
 
                     {[...Array(Math.max(0, 6 - guesses.length - (status === "playing" ? 1 : 0))).keys()].map((k) => (
-                      <div key={\`empty-\${k}\`} className="grid grid-cols-5 gap-2 place-items-center">
+                      <div key={`empty-${k}`} className="grid grid-cols-5 gap-2 place-items-center">
                         {[0,1,2,3,4].map((i) => (<Cell key={i} value="" state="pending" />))}
                       </div>
                     ))}
@@ -234,7 +234,7 @@
                       <div className="flex gap-2 items-center">
                         <input inputMode="numeric" pattern="[0-9]*" maxLength={5}
                           className="flex-1 px-4 py-3 rounded-xl border border-gray-300 text-lg tracking-widest"
-                          placeholder={\`Enter 5 digits (sum = \${targetSum})\`}
+                          placeholder={`Enter 5 digits (sum = ${targetSum})`}
                           value={current}
                           onChange={(e) => {
                             const next = e.target.value.replace(/\D/g, "").slice(0, 5);
